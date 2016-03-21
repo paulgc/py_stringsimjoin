@@ -61,5 +61,8 @@ target/
 # idea
 .idea
 
+# DS_Store
+.DS_Store
+
 #Ipython Notebook
 .ipynb_checkpoints
