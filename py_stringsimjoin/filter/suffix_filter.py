@@ -1,24 +1,23 @@
-import pandas as pd
-
 from math import ceil
+
 
 class SuffixFilter:
 
-    def __init__(self, token_ordering):
+    def __init__(self, token_ordering, max_depth=2):
         self.token_ordering = token_ordering
         self.total_tokens = len(self.token_ordering.keys())
-        self.max_depth = 2
+        self.max_depth = max_depth
 
     def apply_filter(self, l_tokens, r_tokens, l_num_tokens, r_num_tokens, threshold):
         i = 0
         r_token_dict = {}
         for token in r_tokens:
-	    r_token_dict[token] = i
-	    i += 1
+            r_token_dict[token] = i
+            i += 1
         i = 0
         j = -1
         for token in l_tokens:
-            if r_token_dict.get(token) != None:
+            if r_token_dict.get(token) is not None:
                 j = r_token_dict[token]
                 break	
             i += 1
@@ -66,7 +65,7 @@ class SuffixFilter:
 
     def partition(self, tokens, probe_token, l, r):
         if (r < l) or (self.token_ordering.get(tokens[l], self.total_tokens) > self.token_ordering.get(probe_token, self.total_tokens)) or (self.token_ordering.get(tokens[r], self.total_tokens) < self.token_ordering.get(probe_token, self.total_tokens)):
-            return ([], [], 0, 1)
+            return [], [], 0, 1
         p = self.binary_search(tokens, self.token_ordering.get(probe_token, self.total_tokens), l, r)
         tokens_l = tokens[0:p]
         if tokens[p] == probe_token:
@@ -75,14 +74,14 @@ class SuffixFilter:
         else:
             tokens_r = tokens[p:len(tokens)]
             diff = 1
-        return (tokens_l, tokens_r, 1, diff)
+        return tokens_l, tokens_r, 1, diff
 
-    def binary_search(self, tokens, probe_order, l, r):        
+    def binary_search(self, tokens, probe_token_order, l, r):
         mid = int(ceil((l+r)/2))
-        mid_order = self.token_ordering.get(tokens[mid], self.total_tokens)
-        if (l == r) or (mid_order == probe_order):
+        mid_token_order = self.token_ordering.get(tokens[mid], self.total_tokens)
+        if (l == r) or (mid_token_order == probe_token_order):
             return mid
-        elif mid_order < probe_order:
-            return self.binary_search(tokens, probe_order, mid + 1, r)
+        elif mid_token_order < probe_token_order:
+            return self.binary_search(tokens, probe_token_order, mid + 1, r)
         else:
-            return self.binary_search(tokens, probe_order, l, mid) 
+            return self.binary_search(tokens, probe_token_order, l, mid)
