@@ -1,4 +1,3 @@
-import pandas as pd
 from math import ceil, floor
 from random import randint
 from py_stringsimjoin.utils.token_ordering import order_using_token_ordering
@@ -6,22 +5,48 @@ from py_stringsimjoin.utils.token_ordering import order_using_token_ordering
 
 class PositionFilter:
 
-    def __init__(self, table, id_attr, join_attr, tokenizer, threshold, token_ordering):
+    def __init__(self, table, id_attr, join_attr, threshold, token_ordering,
+                 prefix_scheme=1, adaptive_prefix=False):
         self.table = table
         self.id_attr = id_attr
         self.join_attr = join_attr
-        self.tokenizer = tokenizer
         self.threshold = threshold
         self.token_ordering = token_ordering
-        self.position_index = []
+        self.position_index = {}
         self.size_map = {}
+        self.prefix_scheme = prefix_scheme
+
+        # fields used for adaptive prefix scheme
         self.min_len = 1000
         self.max_len = 0
         self.avg_len = 0
+        self.adaptive_prefix = adaptive_prefix
+        self.delta_indexes = []
 
     def build_index(self):
-        self.position_index.append({})
-        self.position_index.append({})
+        if self.adaptive_prefix:
+            return self.build_delta_indexes()
+
+        for idx, row in self.table.iterrows():
+            id = row[self.id_attr]
+            token_list = list(row[self.join_attr])
+            ordered_token_list = order_using_token_ordering(token_list, self.token_ordering)
+            num_tokens = len(ordered_token_list)
+            self.size_map[id] = num_tokens
+            prefix_length = int(num_tokens - ceil(self.threshold * num_tokens) + self.prefix_scheme)
+            i = 0
+            for token in ordered_token_list:
+                if i == prefix_length:
+                    break
+                if self.position_index.get(token) is None:
+                    self.position_index[token] = []
+                self.position_index[token].append((id, i))
+
+        return True
+
+    def build_delta_indexes(self):
+        self.delta_indexes.append({})
+        self.delta_indexes.append({})
         num_delta_indexes = 1 
         for idx, row in self.table.iterrows():
             id = row[self.id_attr]
@@ -35,29 +60,36 @@ class PositionFilter:
             self.size_map[id] = num_tokens
             t = ceil(self.threshold * num_tokens)
             one_prefix_length = int(num_tokens - t + 1)
+
             i = 0
             for i in xrange(0, one_prefix_length):
-                if self.position_index[1].get(ordered_token_list[i]) == None:
-                    self.position_index[1][ordered_token_list[i]] = []
-                self.position_index[1][ordered_token_list[i]].append((id, i))
+                if self.delta_indexes[1].get(ordered_token_list[i]) is None:
+                    self.delta_indexes[1][ordered_token_list[i]] = []
+                self.delta_indexes[1][ordered_token_list[i]].append((id, i))
+
             j = 2
             for i in xrange(one_prefix_length, num_tokens):
-                if j>t:
+                if j > t:
                     break
                 if num_delta_indexes < j:
-                    self.position_index.append({})
+                    self.delta_indexes.append({})
                     num_delta_indexes += 1
-                if self.position_index[j].get(ordered_token_list[i]) == None:
-                    self.position_index[j][ordered_token_list[i]] = []
-                self.position_index[j][ordered_token_list[i]].append((id, i))
+                if self.delta_indexes[j].get(ordered_token_list[i]) is None:
+                    self.delta_indexes[j][ordered_token_list[i]] = []
+                self.delta_indexes[j][ordered_token_list[i]].append((id, i))
                 j += 1
 
         self.avg_len = (self.min_len + self.max_len) / 2
+        return True
 
     def find_candidates(self, probe_tokens, num_tokens, threshold):
+
+        if self.adaptive_prefix:
+            return self.find_candidates_using_delta_indexes(probe_tokens, num_tokens, threshold)
+
         candidates = set()
-        cand_overlap = {}
-        prefix_length = int(num_tokens - ceil(self.threshold * num_tokens) + 1)
+        candidate_overlap = {}
+        prefix_length = int(num_tokens - ceil(threshold * num_tokens) + self.prefix_scheme)
         i = 0
         for token in probe_tokens:
             if i == prefix_length:
@@ -68,20 +100,20 @@ class PositionFilter:
                     cand_num_tokens = self.size_map[id]
                     overlap_threshold = int(ceil((threshold/(1 + threshold)) * (num_tokens + cand_num_tokens)))
                     overlap_upper_bound = 1 + min(num_tokens - i - 1, cand_num_tokens - pos - 1)
-                    if cand_overlap.get(id) == None:
-                        cand_overlap[id] = 0
-                    if (cand_overlap[id] + overlap_upper_bound) >= overlap_threshold:
-                        cand_overlap[id] += 1
+                    if candidate_overlap.get(id) is None:
+                        candidate_overlap[id] = 0
+                    if (candidate_overlap[id] + overlap_upper_bound) >= overlap_threshold:
+                        candidate_overlap[id] += 1
                     else:
-                        cand_overlap[id] = 0
+                        candidate_overlap[id] = 0
     
-        for id in cand_overlap.keys():
-            if cand_overlap[id] > 0:
+        for id in candidate_overlap.keys():
+            if candidate_overlap[id] > 0:
                 candidates.add(id)
 
         return candidates
 
-    def find_candidates1(self, probe_tokens, num_tokens, threshold):
+    def find_candidates_using_delta_indexes(self, probe_tokens, num_tokens, threshold):
 
         candidate_overlap = {}
         overlap_threshold_cache = {}
@@ -94,7 +126,7 @@ class PositionFilter:
         prefix_scheme= 1
         prev_cand_set_card = 0
         for j in xrange(0, one_prefix_length):
-            cands_for_token = self.position_index[1].get(probe_tokens[j])
+            cands_for_token = self.delta_indexes[1].get(probe_tokens[j])
             if cands_for_token is not None:
                 for (id, pos) in cands_for_token:
                     cand_num_tokens = self.size_map[id]
@@ -117,7 +149,7 @@ class PositionFilter:
             merged_size = 0
             prev_index = -1
             for j in xrange(0, one_prefix_length + i - 1):
-                cands_for_token = self.position_index[i].get(probe_tokens[j])
+                cands_for_token = self.delta_indexes[i].get(probe_tokens[j])
                 if cands_for_token is not None:
                     lists.append(cands_for_token)
                     list_len = len(cands_for_token)
@@ -125,7 +157,7 @@ class PositionFilter:
                     prev_index += 1
                     merged_size += list_len
             for j in xrange(1, i):
-                cands_for_token = self.position_index[j].get(probe_tokens[one_prefix_length + i - 2])
+                cands_for_token = self.delta_indexes[j].get(probe_tokens[one_prefix_length + i - 2])
                 if cands_for_token != None:
                     lists.append(cands_for_token)
                     list_len = len(cands_for_token)
