@@ -49,7 +49,7 @@ def jaccard_join(ltable, rtable, l_id_attr, l_join_attr, r_id_attr, r_join_attr,
             l_tokens = l_join_attr_token_dict[l_id]
             if apply_non_index_filters(l_tokens, r_tokens, len(l_tokens), r_num_tokens, threshold, non_index_filters):
                 if sim_function(l_row[l_join_attr], r_row[r_join_attr]) >= threshold:
-                    match_dict = get_output_attributes(l_row, r_row, l_id_attr, r_id_attr,
+                    match_dict = get_output_attributes(l_row, r_row, l_id_attr, l_id, r_id_attr, r_id,
                                                        ltable_output_attrs, rtable_output_attrs)
                     matches_list.append(match_dict)
         prog_bar.update()
@@ -86,7 +86,7 @@ def jaccard_join_auto(ltable, rtable, l_id_attr, l_join_attr, r_id_attr, r_join_
         for l_id in l_cand_ids:
             l_row = l_row_dict[l_id]
             if sim_function(l_row[l_join_attr], r_row[r_join_attr]) >= threshold:
-                match_dict = get_output_attributes(l_row, r_row, l_id_attr, r_id_attr,
+                match_dict = get_output_attributes(l_row, r_row, l_id_attr, l_id, r_id_attr, r_id,
                                                     ltable_output_attrs, rtable_output_attrs)
                 matches_list.append(match_dict)
               #  matches_list.append(str(l_id)+','+str(r_id))
@@ -119,11 +119,11 @@ def sim_match(ltable, rtable, l_id_attr, l_join_attr, r_id_attr, r_join_attr, si
     return output_matches
 
 
-def get_output_attributes(l_row, r_row, l_id_attr, r_id_attr, ltable_output_attrs=None, rtable_output_attrs=None):
+def get_output_attributes(l_row, r_row, l_id_attr, l_id, r_id_attr, r_id, ltable_output_attrs=None, rtable_output_attrs=None):
     match_dict = OrderedDict()
 
     # add ltable id attr
-    match_dict['ltable.'+l_id_attr] = l_row[l_id_attr]
+    match_dict['ltable.'+l_id_attr] = l_id
 
     # add ltable output attributes
     if ltable_output_attrs:
@@ -131,7 +131,7 @@ def get_output_attributes(l_row, r_row, l_id_attr, r_id_attr, ltable_output_attr
             match_dict['ltable.'+l_attr] = l_row[l_attr]
 
     # add rtable id attr
-    match_dict['rtable.'+r_id_attr] = r_row[r_id_attr]
+    match_dict['rtable.'+r_id_attr] = r_id
 
     # add rtable output attributes
     if rtable_output_attrs:
